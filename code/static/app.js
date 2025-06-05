@@ -96,7 +96,6 @@ async function startRawPcmCapture() {
         sampleRate: { ideal: 24000 },
         channelCount: 1,
         echoCancellation: true,
-        // autoGainControl: true,
         noiseSuppression: true
       }
     });
@@ -128,9 +127,9 @@ async function startRawPcmCapture() {
 
     const source = audioContext.createMediaStreamSource(stream);
     source.connect(micWorkletNode);
-    statusDiv.textContent = "Recording...";
+    statusDiv.textContent = "🎤 Listening...";
   } catch (err) {
-    statusDiv.textContent = "Mic access denied.";
+    statusDiv.textContent = "❌ Microphone access denied";
     console.error(err);
   }
 }
@@ -186,22 +185,36 @@ function cleanupAudio() {
 
 function renderMessages() {
   messagesDiv.innerHTML = "";
+  
+  // If no messages, show welcome message
+  if (chatHistory.length === 0 && !typingUser && !typingAssistant) {
+    messagesDiv.innerHTML = `
+      <div class="welcome-message">
+        <h2>Hello! I'm your Co-Human 👋</h2>
+        <p>Click <strong>Start</strong> to begin our voice conversation!</p>
+        <p>I'm here to help you with anything you need.</p>
+      </div>
+    `;
+    return;
+  }
+  
   chatHistory.forEach(msg => {
     const bubble = document.createElement("div");
     bubble.className = `bubble ${msg.role}`;
     bubble.textContent = msg.content;
     messagesDiv.appendChild(bubble);
   });
+  
   if (typingUser) {
     const typing = document.createElement("div");
     typing.className = "bubble user typing";
-    typing.innerHTML = typingUser + '<span style="opacity:.6;">✏️</span>';
+    typing.innerHTML = typingUser + '<span style="opacity:.6;"> ✏️</span>';
     messagesDiv.appendChild(typing);
   }
   if (typingAssistant) {
     const typing = document.createElement("div");
     typing.className = "bubble assistant typing";
-    typing.innerHTML = typingAssistant + '<span style="opacity:.6;">✏️</span>';
+    typing.innerHTML = typingAssistant + '<span style="opacity:.6;"> ✏️</span>';
     messagesDiv.appendChild(typing);
   }
   messagesDiv.scrollTop = messagesDiv.scrollHeight;
@@ -289,21 +302,21 @@ speedSlider.addEventListener("input", (e) => {
       speed: speedValue
     }));
   }
-  console.log("Speed setting changed to:", speedValue);
+  console.log("Speed changed to:", speedValue);
 });
 
 document.getElementById("startBtn").onclick = async () => {
   if (socket && socket.readyState === WebSocket.OPEN) {
-    statusDiv.textContent = "Already recording.";
+    statusDiv.textContent = "✅ Already listening!";
     return;
   }
-  statusDiv.textContent = "Initializing connection...";
+  statusDiv.textContent = "🔄 Connecting...";
 
   const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   socket = new WebSocket(`${wsProto}//${location.host}/ws`);
 
   socket.onopen = async () => {
-    statusDiv.textContent = "Connected. Activating mic and TTS…";
+    statusDiv.textContent = "🔊 Activating microphone and audio...";
     await startRawPcmCapture();
     await setupTTSPlayback();
     speedSlider.disabled = false; 
@@ -315,20 +328,20 @@ document.getElementById("startBtn").onclick = async () => {
         const msg = JSON.parse(evt.data);
         handleJSONMessage(msg);
       } catch (e) {
-        console.error("Error parsing message:", e);
+        console.error("Error processing message:", e);
       }
     }
   };
 
   socket.onclose = () => {
-    statusDiv.textContent = "Connection closed.";
+    statusDiv.textContent = "❌ Connection closed";
     flushRemainder();
     cleanupAudio();
     speedSlider.disabled = true;
   };
 
   socket.onerror = (err) => {
-    statusDiv.textContent = "Connection error.";
+    statusDiv.textContent = "⚠️ Connection error";
     cleanupAudio();
     console.error(err);
     speedSlider.disabled = true; 
@@ -341,16 +354,25 @@ document.getElementById("stopBtn").onclick = () => {
     socket.close();
   }
   cleanupAudio();
-  statusDiv.textContent = "Stopped.";
+  statusDiv.textContent = "⏹️ Conversation paused";
 };
 
 document.getElementById("copyBtn").onclick = () => {
   const text = chatHistory
-    .map(msg => `${msg.role.charAt(0).toUpperCase() + msg.role.slice(1)}: ${msg.content}`)
+    .map(msg => `${msg.role === 'user' ? 'You' : 'Co-Human'}: ${msg.content}`)
     .join('\n');
   
   navigator.clipboard.writeText(text)
-    .then(() => console.log("Conversation copied to clipboard"))
+    .then(() => {
+      console.log("Conversation copied!");
+      // Temporary visual feedback
+      const btn = document.getElementById("copyBtn");
+      const originalTitle = btn.title;
+      btn.title = "✅ Copied!";
+      setTimeout(() => {
+        btn.title = originalTitle;
+      }, 2000);
+    })
     .catch(err => console.error("Copy failed:", err));
 };
 
