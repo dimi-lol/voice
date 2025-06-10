@@ -22,7 +22,7 @@ class AudioInputProcessor:
 
     def __init__(
             self,
-            language: str = "en",
+            language: str = "pt",
             is_orpheus: bool = False,
             silence_active_callback: Optional[Callable[[bool], None]] = None,
             pipeline_latency: float = 0.5,
@@ -31,7 +31,7 @@ class AudioInputProcessor:
         Initializes the AudioInputProcessor.
 
         Args:
-            language: Target language code for transcription (e.g., "en").
+            language: Target language code for transcription (e.g., "pt" for Portuguese).
             is_orpheus: Flag indicating if a specific model variant should be used.
             silence_active_callback: Optional callback function invoked when silence state changes.
                                      It receives a boolean argument (True if silence is active).

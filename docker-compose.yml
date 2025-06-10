@@ -1,75 +1,59 @@
-# Remove the version: '3.8' line as per the warning
+version: '3.8'
+
 services:
-  # Your FastAPI Application Service
-  app:
-    build: . # Build the image using the SIMPLIFIED Dockerfile
-    image: realtime-voice-chat:latest # Name the image built by 'build:'
-    container_name: realtime-voice-chat-app
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: voice-chat-backend
     ports:
       - "8000:8000"
     environment:
-      # Point to the 'ollama' service
-      - OLLAMA_BASE_URL=http://ollama:11434
-      # --- Other App Environment Variables ---
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - MAX_AUDIO_QUEUE_SIZE=${MAX_AUDIO_QUEUE_SIZE:-50}
-      - NVIDIA_VISIBLE_DEVICES=all # For app's PyTorch/DeepSpeed/etc
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-      - HF_HOME=/home/appuser/.cache/huggingface
-      - TORCH_HOME=/home/appuser/.cache/torch
+      - PYTHONPATH=/app/code
+      - MAX_AUDIO_QUEUE_SIZE=50
+      - TTS_START_ENGINE=orpheus
+      - TTS_ORPHEUS_MODEL=freds0/orpheus-brspeech-3b-0.1-ft-32bits-GGUF
+      - DIRECT_STREAM=true
+      - LANGUAGE=pt
     volumes:
-       # Optional: Mount code for live development
-       # - ./code:/app/code
-       # Mount cache directories
-       - huggingface_cache:/home/appuser/.cache/huggingface
-       - torch_cache:/home/appuser/.cache/torch
-    depends_on:
-    - ollama
-    deploy: # GPU access for the app
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu, compute, utility]
+      # Mount models directory for persistent storage
+      - ./models:/app/models
+      - ./data:/app/data
+    networks:
+      - voice-chat-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-  # Ollama Server Service (Using Official Image)
-  ollama:
-    # --- Use the official Ollama image ---
-    image: ollama/ollama:latest
-    container_name: realtime-voice-chat-ollama
-    # --- No 'build:' section needed here ---
-    # command: ["ollama", "serve"] # Usually the default command/entrypoint
-    volumes:
-      # Persist Ollama models and data
-      - ollama_data:/root/.ollama
+  frontend:
+    build:
+      context: ./nextjs-voice-chat
+      dockerfile: Dockerfile
+    container_name: voice-chat-frontend
+    ports:
+      - "3000:3000"
     environment:
-      - NVIDIA_VISIBLE_DEVICES=all # Make GPUs visible inside container
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-      # OLLAMA_MODELS might be useful if needed, points inside volume
-      # - OLLAMA_MODELS=/root/.ollama/models
-    deploy: # GPU access for Ollama Service
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu, compute, utility]
-    # healthcheck:
-      # Check if the Ollama API is responsive
-      # test: ["CMD", "wget", "--quiet", "--spider", "--tries=1", "--timeout=10", "http://localhost:11434/api/tags"]
-      # interval: 15s
-      # timeout: 10s
-      # retries: 12
-      # start_period: 45s # Give it time to start
+      - NODE_ENV=production
+      - NEXT_TELEMETRY_DISABLED=1
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - voice-chat-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-# Define named volumes for persistent data
+networks:
+  voice-chat-network:
+    driver: bridge
+
 volumes:
-  ollama_data:
-    driver: local
-  huggingface_cache:
-    driver: local
-  torch_cache:
-    driver: local
+  models:
+  data:

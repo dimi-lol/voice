@@ -5,7 +5,7 @@ from logsetup import setup_logging
 setup_logging(logging.INFO)
 logger = logging.getLogger(__name__)
 if __name__ == "__main__":
-    logger.info("🖥️👋 Welcome to local real-time voice chat")
+    logger.info("🖥️👋 Welcome to local real-time voice chat API")
 
 from upsample_overlap import UpsampleOverlap
 from datetime import datetime
@@ -24,23 +24,21 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from starlette.responses import HTMLResponse, Response, FileResponse
 
-USE_SSL = False
-TTS_START_ENGINE = "orpheus"
-TTS_START_ENGINE = "kokoro"
-TTS_START_ENGINE = "coqui"
-TTS_ORPHEUS_MODEL = "Orpheus_3B-1BaseGGUF/mOrpheus_3B-1Base_Q4_K_M.gguf"
-TTS_ORPHEUS_MODEL = "orpheus-3b-0.1-ft-Q8_0-GGUF/orpheus-3b-0.1-ft-q8_0.gguf"
+USE_SSL = os.getenv("USE_SSL", "false").lower() == "true"
 
-LLM_START_PROVIDER = "ollama"
-#LLM_START_MODEL = "qwen3:30b-a3b"
-LLM_START_MODEL = "hf.co/bartowski/huihui-ai_Mistral-Small-24B-Instruct-2501-abliterated-GGUF:Q4_K_M"
-# LLM_START_PROVIDER = "lmstudio"
-# LLM_START_MODEL = "Qwen3-30B-A3B-GGUF/Qwen3-30B-A3B-Q3_K_L.gguf"
-NO_THINK = False
-DIRECT_STREAM = TTS_START_ENGINE=="orpheus"
+# TTS Configuration
+TTS_START_ENGINE = os.getenv("TTS_START_ENGINE", "orpheus")
+# Usando modelo Orpheus brasileiro da Hugging Face
+TTS_ORPHEUS_MODEL = os.getenv("TTS_ORPHEUS_MODEL", "freds0/orpheus-brspeech-3b-0.1-ft-32bits-GGUF")
+
+# LLM Configuration
+LLM_START_PROVIDER = os.getenv("LLM_START_PROVIDER", "ollama")
+LLM_START_MODEL = os.getenv("LLM_START_MODEL", "hf.co/bartowski/huihui-ai_Mistral-Small-24B-Instruct-2501-abliterated-GGUF:Q4_K_M")
+
+# Other settings
+NO_THINK = os.getenv("NO_THINK", "false").lower() == "true"
+DIRECT_STREAM = os.getenv("DIRECT_STREAM", str(TTS_START_ENGINE=="orpheus")).lower() == "true"
 
 if __name__ == "__main__":
     logger.info(f"🖥️⚙️ {Colors.apply('[PARAM]').blue} Starting engine: {Colors.apply(TTS_START_ENGINE).blue}")
@@ -66,39 +64,9 @@ from audio_in import AudioInputProcessor
 from speech_pipeline_manager import SpeechPipelineManager
 from colors import Colors
 
-LANGUAGE = "en"
+LANGUAGE = os.getenv("LANGUAGE", "pt")
 # TTS_FINAL_TIMEOUT = 0.5 # unsure if 1.0 is needed for stability
 TTS_FINAL_TIMEOUT = 1.0 # unsure if 1.0 is needed for stability
-
-# --------------------------------------------------------------------
-# Custom no-cache StaticFiles
-# --------------------------------------------------------------------
-class NoCacheStaticFiles(StaticFiles):
-    """
-    Serves static files without allowing client-side caching.
-
-    Overrides the default Starlette StaticFiles to add 'Cache-Control' headers
-    that prevent browsers from caching static assets. Useful for development.
-    """
-    async def get_response(self, path: str, scope: Dict[str, Any]) -> Response:
-        """
-        Gets the response for a requested path, adding no-cache headers.
-
-        Args:
-            path: The path to the static file requested.
-            scope: The ASGI scope dictionary for the request.
-
-        Returns:
-            A Starlette Response object with cache-control headers modified.
-        """
-        response: Response = await super().get_response(path, scope)
-        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-        # These might not be strictly necessary with no-store, but belt and suspenders
-        if "etag" in response.headers:
-             response.headers.__delitem__("etag")
-        if "last-modified" in response.headers:
-             response.headers.__delitem__("last-modified")
-        return response
 
 # --------------------------------------------------------------------
 # Lifespan management
@@ -114,7 +82,7 @@ async def lifespan(app: FastAPI):
     Args:
         app: The FastAPI application instance.
     """
-    logger.info("🖥️▶️ Server starting up")
+    logger.info("🖥️▶️ API Server starting up")
     # Initialize global components, not connection-specific state
     app.state.SpeechPipelineManager = SpeechPipelineManager(
         tts_engine=TTS_START_ENGINE,
@@ -134,49 +102,57 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    logger.info("🖥️⏹️ Server shutting down")
+    logger.info("🖥️⏹️ API Server shutting down")
     app.state.AudioInputProcessor.shutdown()
 
 # --------------------------------------------------------------------
 # FastAPI app instance
 # --------------------------------------------------------------------
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(
+    title="Voice Chat API",
+    description="Real-time voice chat API with WebRTC support",
+    version="1.0.0",
+    lifespan=lifespan
+)
 
-# Enable CORS if needed
+# Enable CORS for frontend communication
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:3000",  # NextJS dev server
+        "http://frontend:3000",   # Docker container
+        "https://localhost:3000", # HTTPS dev
+        "https://frontend:3000",  # HTTPS Docker
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Mount static files with no cache
-app.mount("/static", NoCacheStaticFiles(directory="static"), name="static")
-
-@app.get("/favicon.ico")
-async def favicon():
+@app.get("/health")
+async def health_check():
     """
-    Serves the favicon.ico file.
-
+    Health check endpoint for the API.
+    
     Returns:
-        A FileResponse containing the favicon.
+        A dictionary with the API status.
     """
-    return FileResponse("static/favicon.ico")
+    return {"status": "healthy", "service": "voice-chat-api"}
 
 @app.get("/")
-async def get_index() -> HTMLResponse:
+async def get_root():
     """
-    Serves the main index.html page.
-
-    Reads the content of static/index.html and returns it as an HTML response.
-
+    Root endpoint with API information.
+    
     Returns:
-        An HTMLResponse containing the content of index.html.
+        A dictionary with API information.
     """
-    with open("static/index.html", "r", encoding="utf-8") as f:
-        html_content = f.read()
-    return HTMLResponse(content=html_content)
+    return {
+        "message": "Voice Chat API",
+        "version": "1.0.0",
+        "websocket_endpoint": "/ws",
+        "health_check": "/health"
+    }
 
 # --------------------------------------------------------------------
 # Utility functions
