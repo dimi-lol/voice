@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  voice-chat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: voice-chat-app
+    ports:
+      - "3000:3000"  # Frontend
+      - "8000:8000"  # Backend API
+    environment:
+      - NODE_ENV=production
+      - NEXT_TELEMETRY_DISABLED=1
+      - PYTHONPATH=/app/code
+      - MAX_AUDIO_QUEUE_SIZE=50
+      - TTS_START_ENGINE=orpheus
+      - TTS_ORPHEUS_MODEL=freds0/orpheus-brspeech-3b-0.1-ft-32bits-GGUF
+      - DIRECT_STREAM=true
+      - LANGUAGE=pt
+    volumes:
+      # Mount models directory for persistent storage
+      - ./models:/app/models
+      - ./data:/app/data
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/api/health && curl -f http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  models:
+  data:
+  logs: 
