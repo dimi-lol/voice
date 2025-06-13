@@ -1,0 +1,66 @@
+# Dockerfile minimal para Voice Chat - Otimizado para espaço
+FROM node:18-alpine AS runtime
+
+# Install Python and system dependencies
+RUN apk add --no-cache \
+    python3 \
+    py3-pip \
+    python3-dev \
+    build-base \
+    linux-headers \
+    curl \
+    bash \
+    supervisor \
+    ffmpeg \
+    portaudio-dev \
+    libsndfile-dev \
+    git
+
+WORKDIR /app
+
+# Copy and install frontend dependencies (including dev deps for build)
+COPY nextjs-voice-chat/package*.json ./
+RUN npm install --no-optional --no-audit --prefer-offline
+
+# Copy frontend source and build
+COPY nextjs-voice-chat/ ./
+RUN npm run build && \
+    rm -rf node_modules .next/cache && \
+    npm cache clean --force && \
+    npm install --production --no-optional --no-audit --prefer-offline
+
+# Copy backend code
+COPY code/ ./code/
+
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip3 install --no-cache-dir --no-deps -r requirements.txt || \
+    pip3 install --no-cache-dir -r requirements.txt
+
+# Copy service management scripts
+COPY start-services.sh ./
+COPY supervisord.conf ./
+RUN chmod +x start-services.sh
+
+# Create necessary directories
+RUN mkdir -p /app/models /app/data /app/logs /app/temp
+
+# Environment variables
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PYTHONPATH=/app/code
+ENV MAX_AUDIO_QUEUE_SIZE=50
+ENV TTS_START_ENGINE=orpheus
+ENV TTS_ORPHEUS_MODEL=freds0/orpheus-brspeech-3b-0.1-ft-32bits-GGUF
+ENV DIRECT_STREAM=true
+ENV LANGUAGE=pt
+
+# Expose ports
+EXPOSE 3000 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:3000/api/health && curl -f http://localhost:8000/health
+
+# Default command
+CMD ["./start-services.sh"] 
