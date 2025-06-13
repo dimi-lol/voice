@@ -133,7 +133,7 @@ app.add_middleware(
 async def health_check():
     """
     Health check endpoint for the API.
-    
+
     Returns:
         A dictionary with the API status.
     """
@@ -143,7 +143,7 @@ async def health_check():
 async def get_root():
     """
     Root endpoint with API information.
-    
+
     Returns:
         A dictionary with API information.
     """

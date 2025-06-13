@@ -22,10 +22,11 @@ fi
 echo "🔧 Opções de build para AWS:"
 echo "1) Build com Dockerfile.aws (CPU otimizado)"
 echo "2) Build com Dockerfile original (CUDA)"
-echo "3) Build minimal (economia de espaço) - RECOMENDADO"
-echo "4) Build limpo sem cache"
-echo "5) Build e executar localmente"
-read -p "Digite sua escolha (1-5): " choice
+echo "3) Build minimal (economia de espaço)"
+echo "4) Build estático (frontend HTML original) - RECOMENDADO"
+echo "5) Build limpo sem cache"
+echo "6) Build e executar localmente"
+read -p "Digite sua escolha (1-6): " choice
 
 BUILD_ARGS=""
 DOCKERFILE="Dockerfile.aws"
@@ -45,18 +46,22 @@ case $choice in
         DOCKERFILE="Dockerfile.minimal"
         ;;
     4)
-        echo "🧹 Build limpo sem cache..."
-        BUILD_ARGS="--no-cache"
-        DOCKERFILE="Dockerfile.minimal"
+        echo "🌐 Build estático (frontend HTML original)..."
+        DOCKERFILE="Dockerfile.static"
         ;;
     5)
+        echo "🧹 Build limpo sem cache..."
+        BUILD_ARGS="--no-cache"
+        DOCKERFILE="Dockerfile.static"
+        ;;
+    6)
         echo "🚀 Build e executar..."
         RUN_AFTER=true
-        DOCKERFILE="Dockerfile.minimal"
+        DOCKERFILE="Dockerfile.static"
         ;;
     *)
-        echo "❌ Opção inválida. Usando minimal..."
-        DOCKERFILE="Dockerfile.minimal"
+        echo "❌ Opção inválida. Usando estático..."
+        DOCKERFILE="Dockerfile.static"
         ;;
 esac
 

@@ -1,0 +1,61 @@
+# Dockerfile usando frontend estático original
+FROM python:3.10-slim
+
+# Prevent interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    git \
+    curl \
+    wget \
+    ffmpeg \
+    libsndfile1 \
+    portaudio19-dev \
+    python3-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy and install Python dependencies
+COPY requirements.txt .
+RUN pip3 install --no-cache-dir --upgrade pip && \
+    pip3 install --no-cache-dir -r requirements.txt
+
+# Copy backend code (includes static frontend)
+COPY code/ ./code/
+
+# Create a simple startup script that adds static file serving
+RUN echo '#!/bin/bash' > /app/start_static.py && \
+    echo 'import sys' >> /app/start_static.py && \
+    echo 'sys.path.insert(0, "/app/code")' >> /app/start_static.py && \
+    echo 'from server import app' >> /app/start_static.py && \
+    echo 'from fastapi.staticfiles import StaticFiles' >> /app/start_static.py && \
+    echo 'app.mount("/", StaticFiles(directory="/app/code/static", html=True), name="static")' >> /app/start_static.py && \
+    echo 'import uvicorn' >> /app/start_static.py && \
+    echo 'if __name__ == "__main__":' >> /app/start_static.py && \
+    echo '    uvicorn.run(app, host="0.0.0.0", port=8000)' >> /app/start_static.py
+
+# Create necessary directories
+RUN mkdir -p /app/models /app/data /app/logs /app/temp
+
+# Environment variables for Portuguese/Brazilian
+ENV PYTHONPATH=/app/code
+ENV MAX_AUDIO_QUEUE_SIZE=50
+ENV TTS_START_ENGINE=orpheus
+ENV TTS_ORPHEUS_MODEL=freds0/orpheus-brspeech-3b-0.1-ft-32bits-GGUF
+ENV DIRECT_STREAM=true
+ENV LANGUAGE=pt
+
+# Expose port (only backend needed, serves static files)
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8000/health
+
+# Start the Python server (serves both API and static files)
+CMD ["python3", "/app/start_static.py"] 
