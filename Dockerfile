@@ -48,28 +48,6 @@ RUN pip3 install --no-cache-dir --upgrade pip && \
 # Copy backend code
 COPY code/ ./code/
 
-# Pre-download models to reduce startup time
-RUN python3 -c "
-import torch
-import whisper
-from sentence_transformers import SentenceTransformer
-import silero_vad
-
-# Download Whisper model
-print('Downloading Whisper base model...')
-whisper.load_model('base')
-
-# Download VAD model
-print('Downloading Silero VAD model...')
-model, utils = silero_vad.load_silero_vad()
-
-# Download sentence classification model
-print('Downloading SentenceFinishedClassification model...')
-SentenceTransformer('freds0/SentenceFinishedClassification')
-
-print('All models downloaded successfully!')
-"
-
 # Final runtime stage
 FROM node:18-alpine AS runtime
 
@@ -82,7 +60,11 @@ RUN apk add --no-cache \
     linux-headers \
     curl \
     bash \
-    supervisor
+    supervisor \
+    ffmpeg \
+    portaudio-dev \
+    libsndfile-dev \
+    git
 
 WORKDIR /app
 
@@ -95,8 +77,7 @@ COPY --from=frontend-builder /app/frontend/next.config.* ./
 # Install only production dependencies for frontend
 RUN npm install --production --prefer-offline --no-audit
 
-# Copy Python backend and dependencies
-COPY --from=python-builder /usr/local/lib/python3.8/site-packages /usr/local/lib/python3.11/site-packages
+# Copy backend code
 COPY --from=python-builder /app/code ./code
 
 # Copy Python requirements and install
